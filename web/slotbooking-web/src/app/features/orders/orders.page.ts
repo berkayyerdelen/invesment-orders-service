@@ -82,7 +82,10 @@ export class OrdersPage implements OnInit {
 
     this.submitting.set(true);
     this.api
-      .placeOrder({ accountId: account.accountId, symbol: quote.symbol, quantity: this.form.getRawValue().quantity! })
+      .placeOrder(
+        { accountId: account.accountId, symbol: quote.symbol, quantity: this.form.getRawValue().quantity! },
+        crypto.randomUUID(),
+      )
       .pipe(finalize(() => this.submitting.set(false)))
       .subscribe({
         next: (order) => {

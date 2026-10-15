@@ -15,4 +15,7 @@ public sealed class OrderRepository(InvestmentOrdersDbContext context) : IOrderR
 
     public Task<Order?> GetByIdAsync(Guid orderId, CancellationToken cancellationToken = default) =>
         context.Orders.FirstOrDefaultAsync(o => o.Id == orderId, cancellationToken);
+
+    public Task<Order?> FindByIdempotencyKeyAsync(string idempotencyKey, CancellationToken cancellationToken = default) =>
+        context.Orders.FirstOrDefaultAsync(o => o.IdempotencyKey == idempotencyKey, cancellationToken);
 }

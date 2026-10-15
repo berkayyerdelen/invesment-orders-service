@@ -22,17 +22,11 @@ namespace InvestmentOrders.Infrastructure.Migrations
 
             NpgsqlModelBuilderExtensions.UseIdentityByDefaultColumns(modelBuilder);
 
-            modelBuilder.Entity("InvestmentOrders.Domain.Models.InvestmentAccount", b =>
+            modelBuilder.Entity("InvestmentOrders.Domain.Models.Account", b =>
                 {
                     b.Property<Guid>("Id")
                         .ValueGeneratedOnAdd()
                         .HasColumnType("uuid");
-
-                    b.Property<uint>("xmin")
-                        .IsConcurrencyToken()
-                        .ValueGeneratedOnAddOrUpdate()
-                        .HasColumnType("xid")
-                        .HasColumnName("xmin");
 
                     b.HasKey("Id");
 
@@ -50,6 +44,11 @@ namespace InvestmentOrders.Infrastructure.Migrations
                     b.Property<DateTimeOffset>("ExecutedAt")
                         .HasColumnType("timestamp with time zone");
 
+                    b.Property<string>("IdempotencyKey")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)");
+
                     b.Property<int>("Quantity")
                         .HasColumnType("integer");
 
@@ -61,6 +60,9 @@ namespace InvestmentOrders.Infrastructure.Migrations
                     b.HasKey("Id");
 
                     b.HasIndex("AccountId");
+
+                    b.HasIndex("IdempotencyKey")
+                        .IsUnique();
 
                     b.ToTable("Orders");
                 });
@@ -81,11 +83,11 @@ namespace InvestmentOrders.Infrastructure.Migrations
                     b.ToTable("Stocks");
                 });
 
-            modelBuilder.Entity("InvestmentOrders.Domain.Models.InvestmentAccount", b =>
+            modelBuilder.Entity("InvestmentOrders.Domain.Models.Account", b =>
                 {
                     b.OwnsOne("InvestmentOrders.Domain.ValueObjects.Money", "CashBalance", b1 =>
                         {
-                            b1.Property<Guid>("InvestmentAccountId")
+                            b1.Property<Guid>("AccountId")
                                 .HasColumnType("uuid");
 
                             b1.Property<decimal>("Amount")
@@ -98,12 +100,12 @@ namespace InvestmentOrders.Infrastructure.Migrations
                                 .HasColumnType("character varying(3)")
                                 .HasColumnName("Currency");
 
-                            b1.HasKey("InvestmentAccountId");
+                            b1.HasKey("AccountId");
 
                             b1.ToTable("Accounts");
 
                             b1.WithOwner()
-                                .HasForeignKey("InvestmentAccountId");
+                                .HasForeignKey("AccountId");
                         });
 
                     b.Navigation("CashBalance")
@@ -112,7 +114,7 @@ namespace InvestmentOrders.Infrastructure.Migrations
 
             modelBuilder.Entity("InvestmentOrders.Domain.Models.Order", b =>
                 {
-                    b.HasOne("InvestmentOrders.Domain.Models.InvestmentAccount", null)
+                    b.HasOne("InvestmentOrders.Domain.Models.Account", null)
                         .WithMany()
                         .HasForeignKey("AccountId")
                         .OnDelete(DeleteBehavior.Restrict)

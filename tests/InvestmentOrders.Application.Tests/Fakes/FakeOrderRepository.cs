@@ -18,4 +18,10 @@ internal sealed class FakeOrderRepository : IOrderRepository
         var result = Orders.FirstOrDefault(o => o.Id == orderId);
         return Task.FromResult(result);
     }
+
+    public Task<Order?> FindByIdempotencyKeyAsync(string idempotencyKey, CancellationToken cancellationToken = default)
+    {
+        var result = Orders.FirstOrDefault(o => o.IdempotencyKey == idempotencyKey);
+        return Task.FromResult(result);
+    }
 }

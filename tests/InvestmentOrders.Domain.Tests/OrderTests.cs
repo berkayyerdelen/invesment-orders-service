@@ -8,7 +8,7 @@ public class OrderTests
     [Fact]
     public void TotalAmount_IsQuantityTimesPricePerShare()
     {
-        var order = new Order(Guid.NewGuid(), "AAPL", 10, new Money(150m, Currency.Usd), DateTimeOffset.UtcNow);
+        var order = new Order(Guid.NewGuid(), "AAPL", 10, new Money(150m, Currency.Usd), DateTimeOffset.UtcNow, "key-1");
 
         Assert.Equal(new Money(1_500m, Currency.Usd), order.TotalAmount);
     }

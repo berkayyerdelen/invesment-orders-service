@@ -12,6 +12,7 @@ public sealed class OrderConfiguration : IEntityTypeConfiguration<Order>
         builder.HasKey(o => o.Id);
         builder.Property(o => o.Id).ValueGeneratedNever();
         builder.Property(o => o.Symbol).HasMaxLength(10);
+        builder.Property(o => o.IdempotencyKey).HasMaxLength(200);
         builder.Ignore(o => o.TotalAmount);
 
         builder.OwnsOne(o => o.PricePerShare, money =>
@@ -28,5 +29,8 @@ public sealed class OrderConfiguration : IEntityTypeConfiguration<Order>
             .WithMany()
             .HasForeignKey(o => o.AccountId)
             .OnDelete(DeleteBehavior.Restrict);
+
+        // DB-level backstop: even if a concurrent duplicate slipped past the per-account lock, the insert itself can't collide.
+        builder.HasIndex(o => o.IdempotencyKey).IsUnique();
     }
 }

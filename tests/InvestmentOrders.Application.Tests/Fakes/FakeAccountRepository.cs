@@ -25,4 +25,7 @@ internal sealed class FakeAccountRepository(Account account) : IAccountRepositor
         Account.Debit(amount);
         return Task.CompletedTask;
     }
+
+    public Task<T> ExecuteWithAccountLockAsync<T>(Guid accountId, Func<Task<T>> operation, CancellationToken cancellationToken = default) =>
+        operation();
 }

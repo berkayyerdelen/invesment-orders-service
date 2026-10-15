@@ -57,13 +57,15 @@ Base path `/api`.
 | `GET` | `/accounts/default` | The demo account's cash balance |
 | `GET` | `/stocks/AAPL` | AAPL's name and current price |
 | `POST` | `/orders/validate` | `{ accountId, symbol, quantity }` → preview: `{ isValid, pricePerShare, totalAmount, errorMessage }`. Never persists anything. |
-| `POST` | `/orders` | `{ accountId, symbol, quantity }` → debits the account, persists the order, returns `{ orderId, pricePerShare, totalAmount, executedAt, remainingCashBalance }` |
+| `POST` | `/orders` | Header `Idempotency-Key` (required) + `{ accountId, symbol, quantity }` → debits the account, persists the order, returns `{ orderId, pricePerShare, totalAmount, executedAt, remainingCashBalance }`. Replaying the same key returns the original order instead of placing a second one. |
 
 Requests are validated with data annotations (`[ApiController]` returns 400 automatically). Business rules — unknown account/stock (404), insufficient funds (422) — are `DomainException`s mapped to RFC 7807 ProblemDetails by `GlobalExceptionHandler`.
 
-## Concurrency
+## Concurrency and idempotency
 
-`AccountRepository.DebitAsync` wraps the debit in a Redis distributed lock (`Medallion.Threading.Redis`) keyed per account, so concurrent buys on the same account across API replicas are serialized. The account's row also carries an optimistic concurrency token (Postgres' native `xmin` system column via EF Core); a `DbUpdateConcurrencyException` is retried a few times as the backstop for any race the lock didn't catch. `/api/orders/validate` stays a pure, side-effect-free preview — no funds are held until `/api/orders` actually places the order.
+`OrderService.PlaceOrderAsync` runs the whole placement (idempotency check, pricing, debit, persist) inside `AccountRepository.ExecuteWithAccountLockAsync` — a Redis distributed lock (`Medallion.Threading.Redis`) keyed per account, so concurrent buys on the same account across API replicas are serialized. That lock is the sole concurrency guard on the debit — `AccountRepository.DebitAsync` requires the caller already hold it and does a plain load-mutate-save, no optimistic-concurrency retry, since two debits for the same account can never race while every write goes through the lock. `/api/orders/validate` stays a pure, side-effect-free preview — no funds are held until `/api/orders` actually places the order.
+
+`POST /api/orders` requires an `Idempotency-Key` header. The Angular client generates one UUID per placement attempt. A replayed request with the same key — the check runs inside the same account lock as the debit, so a concurrent retry waits for the original rather than racing it — returns the original order instead of double-debiting. `Orders.IdempotencyKey` also has a DB-level unique index as a second backstop.
 
 `StockRepository.FindBySymbolAsync` cache-asides stock quotes in Redis (30s TTL), using the same distributed lock to avoid a cache-stampede on a miss.
 
@@ -85,4 +87,3 @@ Requests are validated with data annotations (`[ApiController]` returns 400 auto
 
 - Single-tenant, no authentication.
 - One hardcoded stock (AAPL) at a fixed price — no live market data feed.
-- No idempotency key on `POST /api/orders` — a client-side retry of the same request would place a second order. Not needed for a single-user demo; flagged as a deliberate omission rather than an oversight.

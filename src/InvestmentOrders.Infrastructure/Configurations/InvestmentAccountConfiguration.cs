@@ -20,8 +20,5 @@ public sealed class InvestmentAccountConfiguration : IEntityTypeConfiguration<Ac
                 .HasMaxLength(3);
         });
         builder.Navigation(a => a.CashBalance).IsRequired();
-
-        // Postgres' native row-version system column doubles as the optimistic concurrency token.
-        builder.Property<uint>("xmin").HasColumnName("xmin").IsRowVersion();
     }
 }

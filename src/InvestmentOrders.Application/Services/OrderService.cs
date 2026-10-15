@@ -24,19 +24,31 @@ public sealed class OrderService(
         return new OrderValidationResponse(isValid, stock.Price.Amount, totalAmount.Amount, reason);
     }
 
-    public async Task<OrderResponse> PlaceOrderAsync(PlaceOrderRequest request, CancellationToken cancellationToken = default)
-    {
-        var (account, stock, totalAmount) = await PriceOrderAsync(request.AccountId, request.Symbol, request.Quantity, cancellationToken);
+    public Task<OrderResponse> PlaceOrderAsync(PlaceOrderRequest request, CancellationToken cancellationToken = default) =>
+        accountRepository.ExecuteWithAccountLockAsync(request.AccountId, async () =>
+        {
+            // Idempotency check runs inside the same per-account lock as the debit below, so a retried request
+            // that arrives while the original is still in flight waits for it, then sees the order and short-circuits
+            // instead of double-debiting.
+            var existingOrder = await orderRepository.FindByIdempotencyKeyAsync(request.IdempotencyKey, cancellationToken);
+            if (existingOrder is not null)
+            {
+                var existingAccount = await accountRepository.GetByIdAsync(existingOrder.AccountId, cancellationToken)
+                    ?? throw new AccountNotFoundException(existingOrder.AccountId);
+                return existingOrder.ToResponse(existingAccount.CashBalance.Amount);
+            }
 
-        // Atomic re-check-and-debit: the preview above can be stale by the time execution runs.
-        await accountRepository.DebitAsync(account.Id, totalAmount, cancellationToken);
+            var (account, stock, totalAmount) = await PriceOrderAsync(request.AccountId, request.Symbol, request.Quantity, cancellationToken);
 
-        var order = new Order(account.Id, stock.Symbol, request.Quantity, stock.Price, timeProvider.GetUtcNow());
-        await orderRepository.AddAsync(order, cancellationToken);
+            // Atomic re-check-and-debit: the preview above can be stale by the time execution runs.
+            await accountRepository.DebitAsync(account.Id, totalAmount, cancellationToken);
 
-        var updatedAccount = await accountRepository.GetByIdAsync(account.Id, cancellationToken) ?? account;
-        return order.ToResponse(updatedAccount.CashBalance.Amount);
-    }
+            var order = new Order(account.Id, stock.Symbol, request.Quantity, stock.Price, timeProvider.GetUtcNow(), request.IdempotencyKey);
+            await orderRepository.AddAsync(order, cancellationToken);
+
+            var updatedAccount = await accountRepository.GetByIdAsync(account.Id, cancellationToken) ?? account;
+            return order.ToResponse(updatedAccount.CashBalance.Amount);
+        }, cancellationToken);
 
     private async Task<(Account Account, Stock Stock, Money TotalAmount)> PriceOrderAsync(
         Guid accountId, string symbol, int quantity, CancellationToken cancellationToken)

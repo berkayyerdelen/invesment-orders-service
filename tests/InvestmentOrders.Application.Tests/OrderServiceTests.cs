@@ -75,7 +75,7 @@ public class OrderServiceTests
         var orderRepository = new FakeOrderRepository();
         var service = CreateService(account, stock, orderRepository);
 
-        var result = await service.PlaceOrderAsync(new PlaceOrderRequest(account.Id, "AAPL", 10));
+        var result = await service.PlaceOrderAsync(new PlaceOrderRequest(account.Id, "AAPL", 10, "key-1"));
 
         Assert.Equal(1_500m, result.TotalAmount);
         Assert.Equal(8_500m, result.RemainingCashBalance);
@@ -92,9 +92,27 @@ public class OrderServiceTests
         var service = CreateService(account, stock, orderRepository);
 
         await Assert.ThrowsAsync<InsufficientFundsException>(
-            () => service.PlaceOrderAsync(new PlaceOrderRequest(account.Id, "AAPL", 10)));
+            () => service.PlaceOrderAsync(new PlaceOrderRequest(account.Id, "AAPL", 10, "key-1")));
 
         Assert.Equal(new Money(100m, Currency.Usd), account.CashBalance);
         Assert.Empty(orderRepository.Orders);
+    }
+
+    [Fact]
+    public async Task PlaceOrderAsync_ReplayingTheSameIdempotencyKey_ReturnsTheSameOrder_WithoutDebitingAgain()
+    {
+        var account = new Account(Guid.NewGuid(), new Money(10_000m, Currency.Usd));
+        var stock = new Stock("AAPL", "Apple Inc.", new Money(150m, Currency.Usd));
+        var orderRepository = new FakeOrderRepository();
+        var service = CreateService(account, stock, orderRepository);
+        var request = new PlaceOrderRequest(account.Id, "AAPL", 10, "same-key");
+
+        var first = await service.PlaceOrderAsync(request);
+        var replay = await service.PlaceOrderAsync(request);
+
+        Assert.Equal(first.OrderId, replay.OrderId);
+        Assert.Equal(8_500m, replay.RemainingCashBalance);
+        Assert.Equal(new Money(8_500m, Currency.Usd), account.CashBalance);
+        Assert.Single(orderRepository.Orders);
     }
 }

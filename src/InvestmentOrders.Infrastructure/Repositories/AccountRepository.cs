@@ -11,32 +11,24 @@ namespace InvestmentOrders.Infrastructure.Repositories;
 public sealed class AccountRepository(InvestmentOrdersDbContext context, IDistributedLockProvider lockProvider) : IAccountRepository
 {
     private static readonly TimeSpan LockTimeout = TimeSpan.FromSeconds(5);
-    private const int MaxConcurrencyAttempts = 3;
 
     public Task<Account?> GetByIdAsync(Guid accountId, CancellationToken cancellationToken = default) =>
         context.Accounts.FirstOrDefaultAsync(a => a.Id == accountId, cancellationToken);
 
-    public async Task DebitAsync(Guid accountId, Money amount, CancellationToken cancellationToken = default)
+    public async Task<T> ExecuteWithAccountLockAsync<T>(Guid accountId, Func<Task<T>> operation, CancellationToken cancellationToken = default)
     {
         await using var handle = await lockProvider.AcquireLockAsync($"account:{accountId}", LockTimeout, cancellationToken);
+        return await operation();
+    }
 
-        for (var attempt = 1; ; attempt++)
-        {
-            var account = await context.Accounts.FirstOrDefaultAsync(a => a.Id == accountId, cancellationToken)
-                ?? throw new AccountNotFoundException(accountId);
+    /// <summary>Caller must already hold <see cref="ExecuteWithAccountLockAsync{T}"/>'s lock for <paramref name="accountId"/> — that's the only concurrency guard; two debits for the same account can never race here.</summary>
+    public async Task DebitAsync(Guid accountId, Money amount, CancellationToken cancellationToken = default)
+    {
+        var account = await context.Accounts.FirstOrDefaultAsync(a => a.Id == accountId, cancellationToken)
+            ?? throw new AccountNotFoundException(accountId);
 
-            account.Debit(amount);
+        account.Debit(amount);
 
-            try
-            {
-                await context.SaveChangesAsync(cancellationToken);
-                return;
-            }
-            catch (DbUpdateConcurrencyException) when (attempt < MaxConcurrencyAttempts)
-            {
-                // The Redis lock should make this rare in practice; this is the DB-level backstop for any race it didn't catch.
-                context.ChangeTracker.Clear();
-            }
-        }
+        await context.SaveChangesAsync(cancellationToken);
     }
 }

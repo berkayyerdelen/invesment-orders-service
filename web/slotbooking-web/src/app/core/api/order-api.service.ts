@@ -21,7 +21,9 @@ export class OrderApiService {
     return this.http.post<OrderValidation>(`${this.baseUrl}/orders/validate`, request);
   }
 
-  placeOrder(request: OrderRequest): Observable<Order> {
-    return this.http.post<Order>(`${this.baseUrl}/orders`, request);
+  placeOrder(request: OrderRequest, idempotencyKey: string): Observable<Order> {
+    return this.http.post<Order>(`${this.baseUrl}/orders`, request, {
+      headers: { 'Idempotency-Key': idempotencyKey },
+    });
   }
 }
