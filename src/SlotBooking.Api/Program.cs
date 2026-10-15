@@ -1,4 +1,5 @@
 using Serilog;
+using Microsoft.Extensions.Logging;
 using SlotBooking.Api.Data;
 using SlotBooking.Api.Endpoints;
 using SlotBooking.Api.Errors;
@@ -41,10 +42,18 @@ if (app.Environment.IsDevelopment())
     app.MapOpenApi();
 }
 
-await DatabaseInitializer.InitializeAsync(app.Services);
+using (var scope = app.Services.CreateScope())
+{
+    var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+    var logger = scope.ServiceProvider.GetRequiredService<ILogger<Program>>();
+    await DatabaseMigrator.MigrateAsync(db, logger);
+}
 
 var api = app.MapGroup("/api");
 api.MapRoomEndpoints();
 api.MapBookingEndpoints();
 
 app.Run();
+
+// Exposed for the integration test project.
+public partial class Program;

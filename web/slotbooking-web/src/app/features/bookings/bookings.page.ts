@@ -3,13 +3,15 @@ import { Component, OnInit, inject, signal } from '@angular/core';
 import { FormControl, FormGroup, ReactiveFormsModule, Validators } from '@angular/forms';
 import { finalize } from 'rxjs';
 
+import { BookingApiService } from '../../core/api/booking-api.service';
+import { Booking, Room } from '../../core/api/models';
 import { ApiError } from '../../core/errors/api-error';
 import { LoggerService } from '../../core/logging/logger.service';
 import { NotificationService } from '../../core/notifications/notification.service';
-import { BookingApiService } from '../../core/api/booking-api.service';
-import { Booking, Room } from '../../core/api/models';
+import { bookingTimesValidator } from './booking-times.rules';
 
-const RANGE_DAYS = 14;
+export const RANGE_DAYS = 14;
+const GUEST_NAME_MAX = 150;
 
 @Component({
   selector: 'app-bookings-page',
@@ -26,38 +28,56 @@ export class BookingsPage implements OnInit {
   readonly rooms = signal<Room[]>([]);
   readonly bookings = signal<Booking[]>([]);
   readonly selectedRoomId = signal<string | null>(null);
+  readonly loadingRooms = signal(false);
   readonly loadingBookings = signal(false);
   readonly submitting = signal(false);
   readonly editingId = signal<string | null>(null);
 
-  readonly createForm = new FormGroup({
-    roomId: new FormControl('', { nonNullable: true, validators: [Validators.required] }),
-    startsAt: new FormControl('', { nonNullable: true, validators: [Validators.required] }),
-    endsAt: new FormControl('', { nonNullable: true, validators: [Validators.required] }),
-    guestName: new FormControl('', { nonNullable: true, validators: [Validators.required, Validators.maxLength(150)] }),
-  });
+  readonly createForm = new FormGroup(
+    {
+      roomId: new FormControl('', { nonNullable: true, validators: [Validators.required] }),
+      startsAt: new FormControl('', { nonNullable: true, validators: [Validators.required] }),
+      endsAt: new FormControl('', { nonNullable: true, validators: [Validators.required] }),
+      guestName: new FormControl('', {
+        nonNullable: true,
+        validators: [Validators.required, Validators.maxLength(GUEST_NAME_MAX)],
+      }),
+    },
+    { validators: bookingTimesValidator(true) },
+  );
 
-  readonly editForm = new FormGroup({
-    startsAt: new FormControl('', { nonNullable: true, validators: [Validators.required] }),
-    endsAt: new FormControl('', { nonNullable: true, validators: [Validators.required] }),
-    guestName: new FormControl('', { nonNullable: true, validators: [Validators.required, Validators.maxLength(150)] }),
-  });
+  readonly editForm = new FormGroup(
+    {
+      startsAt: new FormControl('', { nonNullable: true, validators: [Validators.required] }),
+      endsAt: new FormControl('', { nonNullable: true, validators: [Validators.required] }),
+      guestName: new FormControl('', {
+        nonNullable: true,
+        validators: [Validators.required, Validators.maxLength(GUEST_NAME_MAX)],
+      }),
+    },
+    { validators: bookingTimesValidator(false) },
+  );
 
   ngOnInit(): void {
-    this.api.getRooms().subscribe({
-      next: (rooms) => {
-        this.rooms.set(rooms);
-        if (rooms.length > 0) {
-          this.selectRoom(rooms[0].id);
-        }
-      },
-      error: (error: ApiError) => this.reportError('Could not load rooms', error),
-    });
+    this.loadingRooms.set(true);
+    this.api
+      .getRooms()
+      .pipe(finalize(() => this.loadingRooms.set(false)))
+      .subscribe({
+        next: (rooms) => {
+          this.rooms.set(rooms);
+          if (rooms.length > 0) {
+            this.selectRoom(rooms[0].id);
+          }
+        },
+        error: (error: ApiError) => this.reportError('Could not load rooms', error),
+      });
   }
 
   selectRoom(roomId: string): void {
     this.selectedRoomId.set(roomId);
     this.createForm.controls.roomId.setValue(roomId);
+    this.editingId.set(null);
     this.loadBookings();
   }
 
@@ -103,6 +123,7 @@ export class BookingsPage implements OnInit {
           this.log.info('Booking created', { bookingId: booking.id, version: booking.version });
           this.notifications.show('success', `Booked for ${booking.guestName}.`);
           this.createForm.patchValue({ startsAt: '', endsAt: '', guestName: '' });
+          this.createForm.markAsPristine();
           this.loadBookings();
         },
         error: (error: ApiError) => this.handleWriteError(error),
@@ -163,11 +184,12 @@ export class BookingsPage implements OnInit {
   }
 
   /**
-   * Optimistic concurrency and double-booking conflicts (409) are expected outcomes:
-   * tell the user, then reload so they see the current state and can retry.
+   * Conflicts (409) are expected: a slot was taken, or someone else changed the booking.
+   * Tell the user, then reload so they see the current state and can retry.
    */
   private handleWriteError(error: ApiError): void {
     if (error.isConflict) {
+      this.log.warn('Write conflict, reloading bookings', { traceId: error.traceId });
       this.notifications.show('warning', error.message);
       this.editingId.set(null);
       this.loadBookings();
@@ -183,12 +205,12 @@ export class BookingsPage implements OnInit {
 }
 
 /** datetime-local value (local time, no zone) -> ISO 8601 UTC string. */
-function toIso(localValue: string): string {
+export function toIso(localValue: string): string {
   return new Date(localValue).toISOString();
 }
 
 /** ISO string -> datetime-local value in the user's local time zone. */
-function toLocalInput(iso: string): string {
+export function toLocalInput(iso: string): string {
   const date = new Date(iso);
   const offsetMs = date.getTimezoneOffset() * 60_000;
   return new Date(date.getTime() - offsetMs).toISOString().slice(0, 16);

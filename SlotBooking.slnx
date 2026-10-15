@@ -4,4 +4,7 @@
     <Project Path="src/SlotBooking.Api/SlotBooking.Api.csproj" />
     <Project Path="src/SlotBooking.ServiceDefaults/SlotBooking.ServiceDefaults.csproj" />
   </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/SlotBooking.Api.Tests/SlotBooking.Api.Tests.csproj" />
+  </Folder>
 </Solution>

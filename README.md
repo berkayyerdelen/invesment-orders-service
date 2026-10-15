@@ -90,12 +90,33 @@ Business rules: the end must be after the start, the duration is at most 24 hour
 
 Aspire injects the database connection automatically. Other settings live in `src/SlotBooking.Api/appsettings*.json` (Serilog levels). Set `OTEL_EXPORTER_OTLP_ENDPOINT` to send telemetry to another collector.
 
-## Schema notes
+## Database migrations
 
-The schema is created with `EnsureCreated` and then the database rules are applied idempotently at startup (`DatabaseInitializer`). For production, switch to EF Core migrations (`dotnet ef migrations add`) and keep the rule SQL in a migration.
+Schema changes are plain SQL files in `src/SlotBooking.Api/Data/Migrations/`, embedded in the assembly and applied in file-name order at startup by `DatabaseMigrator`:
+
+- each script runs in its own transaction, and a failure rolls it back
+- applied scripts are recorded in `schema_migrations`
+- a PostgreSQL advisory lock serialises concurrent startups (for example several API replicas)
+
+To change the schema, add a new numbered file (`003_...sql`) rather than editing an applied one. Keep the EF Core mapping in `AppDbContext` in sync with the SQL.
+
+## Tests
+
+- `tests/SlotBooking.Api.Tests` (.NET, xUnit): domain rules, concurrency races against a real PostgreSQL 16 container (Testcontainers), and HTTP-level checks for 409 and 404 responses. Requires Docker.
+
+  ```bash
+  dotnet test SlotBooking.slnx
+  ```
+
+- `web/slotbooking-web` (Vitest via `ng test`): logger, notifications, the error interceptor, the time-range rules, and the bookings page.
+
+  ```bash
+  cd web/slotbooking-web && npm install && npx ng test --watch=false
+  ```
+
+- `tests/sql/verify-booking-rules.sql`: database rule checks you can run in `psql` against a migrated database.
 
 ## Known limitations
 
 - Single-tenant, no authentication. Add authentication before exposing this API.
-- `EnsureCreated` is used instead of migrations (see above).
 - The Angular dev server runs with `ng serve` through Aspire. A production build (`npm run build`) emits static files that need a web server and a reverse proxy for `/api`.

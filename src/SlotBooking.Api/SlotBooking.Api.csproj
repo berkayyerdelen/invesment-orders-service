@@ -16,6 +16,10 @@
   </ItemGroup>
 
   <ItemGroup>
+    <EmbeddedResource Include="Data\Migrations\*.sql" LogicalName="SlotBooking.Api.Data.Migrations.%(Filename)%(Extension)" />
+  </ItemGroup>
+
+  <ItemGroup>
     <ProjectReference Include="..\SlotBooking.ServiceDefaults\SlotBooking.ServiceDefaults.csproj" />
   </ItemGroup>
 
