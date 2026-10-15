@@ -11,7 +11,9 @@ var api = builder.AddDockerfile("api", "../..", "src/InvestmentOrders.Api/Docker
     .WithReference(investmentOrdersDb)
     .WithReference(cache)
     .WaitFor(investmentOrdersDb)
-    .WaitFor(cache);
+    .WaitFor(cache)
+    // AddDockerfile resources, unlike AddProject, don't get OTEL_EXPORTER_OTLP_ENDPOINT injected automatically.
+    .WithOtlpExporter();
 
 builder.AddDockerfile("web", "../..", "web/slotbooking-web/Dockerfile")
     .WithHttpEndpoint(port: 4201, targetPort: 80)

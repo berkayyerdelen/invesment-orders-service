@@ -3,6 +3,7 @@ import { provideHttpClient, withInterceptors } from '@angular/common/http';
 import { provideRouter } from '@angular/router';
 
 import { routes } from './app.routes';
+import { correlationIdInterceptor } from './core/correlation/correlation-id.interceptor';
 import { apiErrorInterceptor } from './core/errors/api-error.interceptor';
 import { GlobalErrorHandler } from './core/errors/global-error-handler';
 
@@ -11,6 +12,6 @@ export const appConfig: ApplicationConfig = {
     provideBrowserGlobalErrorListeners(),
     { provide: ErrorHandler, useClass: GlobalErrorHandler },
     provideRouter(routes),
-    provideHttpClient(withInterceptors([apiErrorInterceptor])),
+    provideHttpClient(withInterceptors([correlationIdInterceptor, apiErrorInterceptor])),
   ],
 };
