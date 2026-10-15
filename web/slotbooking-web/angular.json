@@ -6,7 +6,7 @@
   },
   "newProjectRoot": "projects",
   "projects": {
-    "slotbooking-web": {
+    "investmentorders-web": {
       "projectType": "application",
       "schematics": {
         "@schematics/angular:component": {
@@ -59,12 +59,15 @@
         },
         "serve": {
           "builder": "@angular/build:dev-server",
+          "options": {
+            "proxyConfig": "proxy.conf.mjs"
+          },
           "configurations": {
             "production": {
-              "buildTarget": "slotbooking-web:build:production"
+              "buildTarget": "investmentorders-web:build:production"
             },
             "development": {
-              "buildTarget": "slotbooking-web:build:development"
+              "buildTarget": "investmentorders-web:build:development"
             }
           },
           "defaultConfiguration": "development"

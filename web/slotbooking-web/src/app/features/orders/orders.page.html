@@ -1,0 +1,57 @@
+@if (loading()) {
+  <p class="muted">Loading…</p>
+} @else if (executedOrder()) {
+  <section class="card" data-testid="confirmation">
+    <h2>Order executed</h2>
+    <p>
+      Bought <strong>{{ executedOrder()!.quantity }}</strong> shares of <strong>{{ executedOrder()!.symbol }}</strong>
+      at ${{ executedOrder()!.pricePerShare | number: '1.2-2' }} each.
+    </p>
+    <p>Total: <strong>${{ executedOrder()!.totalAmount | number: '1.2-2' }}</strong></p>
+    <p>Remaining cash balance: <strong>${{ executedOrder()!.remainingCashBalance | number: '1.2-2' }}</strong></p>
+    <button type="button" (click)="startNewOrder()">Buy more</button>
+  </section>
+} @else {
+  <section class="card">
+    <h2>{{ quote()?.name }} ({{ quote()?.symbol }})</h2>
+    <p>Current price: <strong>${{ quote()?.price | number: '1.2-2' }}</strong> per share</p>
+    <p>Cash balance: <strong>${{ account()?.cashBalance | number: '1.2-2' }}</strong></p>
+
+    <form [formGroup]="form" (ngSubmit)="review()" class="grid" novalidate>
+      <label>
+        Quantity
+        <input type="number" min="1" formControlName="quantity" data-testid="quantity" [readonly]="validation() !== null" />
+      </label>
+
+      @if (!validation()) {
+        <button type="submit" [disabled]="reviewing() || form.invalid" data-testid="review-submit">Review order</button>
+      }
+
+      @if (form.controls.quantity.hasError('min') && form.controls.quantity.touched) {
+        <p class="field-error full" role="alert">Enter at least 1 share.</p>
+      }
+    </form>
+
+    @if (validation()) {
+      <div class="review" data-testid="review">
+        <p>Order total: <strong>${{ validation()!.totalAmount | number: '1.2-2' }}</strong></p>
+
+        @if (!validation()!.isValid) {
+          <p class="field-error" role="alert">{{ validation()!.errorMessage }}</p>
+        }
+
+        <div class="actions">
+          <button type="button" class="secondary" (click)="editQuantity()">Edit</button>
+          <button
+            type="button"
+            [disabled]="!validation()!.isValid || submitting()"
+            (click)="confirm()"
+            data-testid="confirm-submit"
+          >
+            Confirm &amp; buy
+          </button>
+        </div>
+      </div>
+    }
+  </section>
+}

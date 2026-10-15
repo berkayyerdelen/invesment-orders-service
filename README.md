@@ -1,75 +1,52 @@
-# Slot Booking
+# Investment Orders
 
-A full-stack room booking system:
+A client with an investment account buys Apple (AAPL) stock: enter a quantity, see the total cost, confirm the order is valid, execute it, and see the confirmed result.
 
-- **Back end:** .NET 10 Web API with Entity Framework Core and PostgreSQL
-- **Front end:** Angular (standalone components, signals)
-- **Orchestration:** .NET Aspire — one command starts PostgreSQL, the API, and the web app
-- **Concurrency:** database-enforced protection against double booking, plus optimistic concurrency on updates
-- **Errors and logging:** global exception handling (RFC 7807 ProblemDetails), Serilog, OpenTelemetry
+- **Back end:** .NET 10 Web API, Clean Architecture (Api / Application / Domain / Infrastructure / SharedKernel), PostgreSQL via EF Core, Redis cache + distributed lock
+- **Front end:** Angular (standalone components, signals, reactive forms)
+- **Errors and logging:** global exception handling (RFC 7807 ProblemDetails)
 
-## Run it (one click)
+## Run it
 
-Prerequisites: [.NET 10 SDK](https://dotnet.microsoft.com/download), [Node.js 22.12+](https://nodejs.org), and [Docker Desktop](https://www.docker.com/products/docker-desktop) (running).
+Prerequisites: [.NET 10 SDK](https://dotnet.microsoft.com/download), [Node.js 22.12+](https://nodejs.org), Docker.
 
-- **macOS / Linux:** `./run.sh`
-- **Windows (PowerShell):** `./run.ps1`
-- **Visual Studio / Rider:** open `SlotBooking.slnx`, set `SlotBooking.AppHost` as the startup project, press F5.
+Primary way to run — Aspire starts Postgres, Redis, the API container, and the Angular container, applies EF Core migrations, and seeds demo data automatically:
 
-The Aspire dashboard opens in your browser. From there:
+```bash
+dotnet run --project src/InvestmentOrders.AppHost
+```
 
-- Open the **web** resource endpoint to use the app.
-- Open the **api** resource endpoint. In Development, the OpenAPI document is at `/openapi/v1.json`, and health checks are at `/health`.
-- Logs, traces and metrics for every resource appear in the dashboard.
+The AppHost dashboard prints the Angular app's URL (pinned to `http://localhost:4201`).
+
+Standalone two-terminal flow still works, but now needs a local Postgres and Redis, with connection strings set in `src/InvestmentOrders.Api/appsettings.Development.json` (`ConnectionStrings:investmentorders`, `ConnectionStrings:cache`):
+
+```bash
+# Terminal 1 — API (http://localhost:5080)
+dotnet run --project src/InvestmentOrders.Api
+
+# Terminal 2 — Angular dev server (http://localhost:4200), proxies /api to the API above
+cd web/slotbooking-web
+npm install
+npm start
+```
+
+Open `http://localhost:4200`. In Development, the OpenAPI document is at `http://localhost:5080/openapi/v1.json`.
 
 ## Architecture
 
 ```
 src/
-├── SlotBooking.AppHost/           Aspire orchestrator: PostgreSQL + API + Angular dev server
-├── SlotBooking.ServiceDefaults/   Shared OpenTelemetry, health checks, resilient HTTP defaults
-└── SlotBooking.Api/
-    ├── Domain/                    Exceptions that map to HTTP status codes
-    ├── Models/                    Booking (business rules) and Room
-    ├── Data/                      EF Core context, schema + database rules
-    ├── Services/                  BookingService: use cases and concurrency handling
-    ├── Endpoints/                 Minimal API routes and contracts
-    └── Errors/                    Global exception handler, PostgreSQL error codes
-web/slotbooking-web/               Angular app (features/, core/, shared/)
-tests/sql/                         SQL checks for the database rules
+├── InvestmentOrders.Api/             Controllers, Requests/Responses, DI extensions, Program.cs
+├── InvestmentOrders.Application/     Use cases: Contracts, Services, Requests/Responses, MappingExtensions
+├── InvestmentOrders.Domain/          InvestmentAccount, Stock, Order; Money/Currency value objects; SufficientFundsPolicy; repository interfaces; exceptions
+├── InvestmentOrders.Infrastructure/  EF Core DbContext + configurations, Postgres-backed repositories, Redis cache + distributed lock, migrations
+└── InvestmentOrders.SharedKernel/    DomainException base class
+web/slotbooking-web/                  Angular app (features/orders, core/)
 ```
 
-## Concurrency: how race conditions are handled
+Money amounts (`InvestmentAccount.CashBalance`, `Stock.Price`, `Order.PricePerShare`) are a `Money` value object (`Amount` + `Currency`) in the Domain layer — arithmetic and currency-mismatch guards live on `Money` itself, not duplicated across callers. The API still returns plain decimals (Application's mapping extensions flatten `Money.Amount` at the boundary).
 
-Two different races can happen in a booking system, and each has its own guard.
-
-### 1. Double booking (two users book the same slot)
-
-The database refuses overlapping active bookings with an `EXCLUDE` constraint:
-
-```sql
-EXCLUDE USING gist (room_id WITH =, tstzrange(starts_at, ends_at, '[)') WITH &&)
-WHERE (status = 'Active')
-```
-
-The application does not check-then-insert, because two requests could both pass that check. The database serialises the conflicting inserts, and the loser receives SQLSTATE `23P01`, which the API returns as **409 Conflict** ("Slot already booked"). Ranges are half-open, so back-to-back bookings are allowed, and cancelled bookings free their slot.
-
-### 2. Lost updates (two users edit the same booking)
-
-Every booking carries a version backed by PostgreSQL's `xmin` system column (`UseXminAsConcurrencyToken()`). A client reads the booking, including its version, and sends the version back with each update or cancel. EF Core adds `WHERE xmin = <version>` to the `UPDATE`:
-
-- If nobody else changed the booking, the update applies and returns the new version.
-- If someone else changed it first, zero rows match. The API returns **409 Conflict** with `currentVersion`, and the UI reloads the booking.
-
-### Verified
-
-The database rules were tested against PostgreSQL 16 (`tests/sql/verify-booking-rules.sql` plus a two-session race). Overlaps are rejected, back-to-back bookings and cancelled slots work, a concurrent insert waits for the first transaction and then fails, and a stale `xmin` update matches zero rows.
-
-## Error handling and logging
-
-- **Global exception handler** (`GlobalExceptionHandler`) converts every exception into an RFC 7807 ProblemDetails response with a `traceId`. Domain errors map to 400, 404 or 409. Unexpected errors become a generic 500 with the full exception logged.
-- **Front end:** an HTTP interceptor normalises API errors, a `GlobalErrorHandler` catches anything unhandled, and the bookings page shows toasts and reloads state after conflicts.
-- **Back end logging:** Serilog writes structured logs to the console, and OpenTelemetry exports them to the Aspire dashboard. Request logging records method, path, status and timing.
+The app seeds one investment account (cash balance $10,000.00) and one stock (AAPL, Apple Inc., $150.00/share) on first run.
 
 ## API
 
@@ -77,46 +54,35 @@ Base path `/api`.
 
 | Method | Route | Description |
 | --- | --- | --- |
-| `GET` | `/rooms` | List rooms |
-| `GET` | `/rooms/{roomId}/bookings?from=&to=` | Bookings overlapping a time range |
-| `GET` | `/bookings/{id}` | Get one booking |
-| `POST` | `/bookings` | Create a booking `{ roomId, startsAt, endsAt, guestName }` |
-| `PUT` | `/bookings/{id}` | Reschedule `{ version, startsAt, endsAt, guestName }` |
-| `POST` | `/bookings/{id}/cancel` | Cancel `{ version }` |
+| `GET` | `/accounts/default` | The demo account's cash balance |
+| `GET` | `/stocks/AAPL` | AAPL's name and current price |
+| `POST` | `/orders/validate` | `{ accountId, symbol, quantity }` → preview: `{ isValid, pricePerShare, totalAmount, errorMessage }`. Never persists anything. |
+| `POST` | `/orders` | `{ accountId, symbol, quantity }` → debits the account, persists the order, returns `{ orderId, pricePerShare, totalAmount, executedAt, remainingCashBalance }` |
 
-Business rules: the end must be after the start, the duration is at most 24 hours, the start must be in the future when creating, and the guest name is required (max 150 characters).
+Requests are validated with data annotations (`[ApiController]` returns 400 automatically). Business rules — unknown account/stock (404), insufficient funds (422) — are `DomainException`s mapped to RFC 7807 ProblemDetails by `GlobalExceptionHandler`.
 
-## Configuration
+## Concurrency
 
-Aspire injects the database connection automatically. Other settings live in `src/SlotBooking.Api/appsettings*.json` (Serilog levels). Set `OTEL_EXPORTER_OTLP_ENDPOINT` to send telemetry to another collector.
+`AccountRepository.DebitAsync` wraps the debit in a Redis distributed lock (`Medallion.Threading.Redis`) keyed per account, so concurrent buys on the same account across API replicas are serialized. The account's row also carries an optimistic concurrency token (Postgres' native `xmin` system column via EF Core); a `DbUpdateConcurrencyException` is retried a few times as the backstop for any race the lock didn't catch. `/api/orders/validate` stays a pure, side-effect-free preview — no funds are held until `/api/orders` actually places the order.
 
-## Database migrations
-
-Schema changes are plain SQL files in `src/SlotBooking.Api/Data/Migrations/`, embedded in the assembly and applied in file-name order at startup by `DatabaseMigrator`:
-
-- each script runs in its own transaction, and a failure rolls it back
-- applied scripts are recorded in `schema_migrations`
-- a PostgreSQL advisory lock serialises concurrent startups (for example several API replicas)
-
-To change the schema, add a new numbered file (`003_...sql`) rather than editing an applied one. Keep the EF Core mapping in `AppDbContext` in sync with the SQL.
+`StockRepository.FindBySymbolAsync` cache-asides stock quotes in Redis (30s TTL), using the same distributed lock to avoid a cache-stampede on a miss.
 
 ## Tests
 
-- `tests/SlotBooking.Api.Tests` (.NET, xUnit): domain rules, concurrency races against a real PostgreSQL 16 container (Testcontainers), and HTTP-level checks for 409 and 404 responses. Requires Docker.
+- `tests/InvestmentOrders.Domain.Tests`, `tests/InvestmentOrders.Application.Tests` (xUnit): funds policy, order math, and `OrderService` validate/execute paths against fake repositories.
 
   ```bash
-  dotnet test SlotBooking.slnx
+  dotnet test InvestmentOrders.slnx
   ```
 
-- `web/slotbooking-web` (Vitest via `ng test`): logger, notifications, the error interceptor, the time-range rules, and the bookings page.
+- `web/slotbooking-web` (Vitest via `ng test`): logger, notifications, the error interceptor, and the orders page (review → confirm → execute, including the insufficient-funds path).
 
   ```bash
   cd web/slotbooking-web && npm install && npx ng test --watch=false
   ```
 
-- `tests/sql/verify-booking-rules.sql`: database rule checks you can run in `psql` against a migrated database.
-
 ## Known limitations
 
-- Single-tenant, no authentication. Add authentication before exposing this API.
-- The Angular dev server runs with `ng serve` through Aspire. A production build (`npm run build`) emits static files that need a web server and a reverse proxy for `/api`.
+- Single-tenant, no authentication.
+- One hardcoded stock (AAPL) at a fixed price — no live market data feed.
+- No idempotency key on `POST /api/orders` — a client-side retry of the same request would place a second order. Not needed for a single-user demo; flagged as a deliberate omission rather than an oversight.

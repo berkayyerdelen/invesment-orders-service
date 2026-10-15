@@ -1,0 +1,14 @@
+<Solution>
+  <Folder Name="/src/">
+    <Project Path="src/InvestmentOrders.Api/InvestmentOrders.Api.csproj" />
+    <Project Path="src/InvestmentOrders.AppHost/InvestmentOrders.AppHost.csproj" />
+    <Project Path="src/InvestmentOrders.Application/InvestmentOrders.Application.csproj" />
+    <Project Path="src/InvestmentOrders.Domain/InvestmentOrders.Domain.csproj" />
+    <Project Path="src/InvestmentOrders.Infrastructure/InvestmentOrders.Infrastructure.csproj" />
+    <Project Path="src/InvestmentOrders.SharedKernel/InvestmentOrders.SharedKernel.csproj" />
+  </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/InvestmentOrders.Application.Tests/InvestmentOrders.Application.Tests.csproj" />
+    <Project Path="tests/InvestmentOrders.Domain.Tests/InvestmentOrders.Domain.Tests.csproj" />
+  </Folder>
+</Solution>

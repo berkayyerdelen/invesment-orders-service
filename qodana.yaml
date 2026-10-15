@@ -1,0 +1,10 @@
+version: "1.0"
+linter: jetbrains/qodana-dotnet:latest
+
+include:
+  - name: all
+
+exclude:
+  - name: All
+    paths:
+      - web

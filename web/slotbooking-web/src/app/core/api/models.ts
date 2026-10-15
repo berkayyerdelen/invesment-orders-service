@@ -1,32 +1,33 @@
-export interface Room {
-  id: string;
+export interface Account {
+  accountId: string;
+  cashBalance: number;
+}
+
+export interface StockQuote {
+  symbol: string;
   name: string;
+  price: number;
 }
 
-export type BookingStatus = 'Active' | 'Cancelled';
-
-export interface Booking {
-  id: string;
-  roomId: string;
-  roomName: string;
-  startsAt: string;
-  endsAt: string;
-  guestName: string;
-  status: BookingStatus;
-  /** Concurrency token. Send it back with every update so the server can detect stale writes. */
-  version: number;
+export interface OrderRequest {
+  accountId: string;
+  symbol: string;
+  quantity: number;
 }
 
-export interface CreateBookingRequest {
-  roomId: string;
-  startsAt: string;
-  endsAt: string;
-  guestName: string;
+export interface OrderValidation {
+  isValid: boolean;
+  pricePerShare: number;
+  totalAmount: number;
+  errorMessage: string | null;
 }
 
-export interface UpdateBookingRequest {
-  version: number;
-  startsAt: string;
-  endsAt: string;
-  guestName: string;
+export interface Order {
+  orderId: string;
+  symbol: string;
+  quantity: number;
+  pricePerShare: number;
+  totalAmount: number;
+  executedAt: string;
+  remainingCashBalance: number;
 }
