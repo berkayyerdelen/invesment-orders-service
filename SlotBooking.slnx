@@ -1,0 +1,7 @@
+<Solution>
+  <Folder Name="/src/">
+    <Project Path="src/SlotBooking.AppHost/SlotBooking.AppHost.csproj" />
+    <Project Path="src/SlotBooking.Api/SlotBooking.Api.csproj" />
+    <Project Path="src/SlotBooking.ServiceDefaults/SlotBooking.ServiceDefaults.csproj" />
+  </Folder>
+</Solution>

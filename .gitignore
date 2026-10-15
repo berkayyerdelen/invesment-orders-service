@@ -1,0 +1,15 @@
+# .NET
+bin/
+obj/
+*.user
+.vs/
+.idea/
+
+# Angular / Node
+web/slotbooking-web/node_modules/
+web/slotbooking-web/dist/
+web/slotbooking-web/.angular/
+
+# OS
+.DS_Store
+Thumbs.db
